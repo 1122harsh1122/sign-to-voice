@@ -1,5 +1,15 @@
+# Ignore Python server files from Vercel static build
+requirements.txt
+app.py
+models/
+scripts/
+templates/
+
+# Ignore datasets and large CSVs
 data/
 *.csv
+
+# Ignore virtual environments and IDE folders
 .venv/
 .conda/
 mediapipe_py39/
@@ -7,4 +17,3 @@ mediapipe_py39/
 __pycache__/
 *.pyc
 .git/
-scripts/
