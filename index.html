@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign to Voice - Real-time AI ASL Translation</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- MediaPipe Hands & Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    /* Clean light scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .mirror { transform: scaleX(-1); }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col font-sans selection:bg-blue-600 selection:text-white">
+
+  <!-- Header -->
+  <header class="border-b border-slate-200 bg-white/90 backdrop-blur px-6 py-4 sticky top-0 z-50 shadow-sm">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-bold text-lg shadow-xs">
+          ✋
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold tracking-tight text-slate-900 flex items-center gap-2">
+            Sign to Voice <span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-medium border border-blue-200">In-Browser AI</span>
+          </h1>
+          <p class="text-xs text-slate-500">Real-time Sign Language Translation via MediaPipe & Neural Network</p>
+        </div>
+      </div>
+
+      <!-- Status Indicator -->
+      <div class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs shadow-2xs">
+        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse" id="status-dot"></span>
+        <span id="status-text" class="text-slate-600 font-medium">Initializing...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Column: Camera View & Real-time Gesture -->
+    <div class="lg:col-span-7 flex flex-col space-y-4">
+      
+      <!-- Video / Canvas Feed -->
+      <div class="relative bg-slate-900 border border-slate-300 rounded-xl overflow-hidden shadow-sm aspect-[4/3] flex items-center justify-center">
+        <!-- Hidden video for MediaPipe input -->
+        <video id="webcam" class="hidden" autoplay playsinline></video>
+
+        <!-- Canvas for rendering mirror video feed + landmark skeleton -->
+        <canvas id="output-canvas" class="w-full h-full object-contain mirror"></canvas>
+
+        <!-- Loading overlay -->
+        <div id="camera-loading" class="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center space-y-3 z-10 text-white">
+          <div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p class="text-sm text-slate-200">Starting camera & loading neural network...</p>
+        </div>
+
+        <!-- Camera overlay status bar -->
+        <div class="absolute top-3 left-3 right-3 flex justify-between items-center z-20 pointer-events-none">
+          <div class="bg-slate-950/75 backdrop-blur px-2.5 py-1 rounded-md text-xs font-mono text-slate-200 border border-slate-700/50 flex items-center space-x-2 pointer-events-auto">
+            <span id="fps-counter">0 FPS</span>
+            <span class="text-slate-500">|</span>
+            <span id="latency-counter">0ms</span>
+          </div>
+
+          <div class="flex space-x-1.5 pointer-events-auto">
+            <button id="toggle-skeleton-btn" title="Toggle Skeleton Overlay" class="px-2.5 py-1 bg-slate-950/75 hover:bg-slate-800 text-slate-200 border border-slate-700/50 rounded-md text-xs transition cursor-pointer">
+              🦴 Skeleton: On
+            </button>
+            <button id="toggle-camera-btn" title="Pause/Resume Camera" class="px-2.5 py-1 bg-slate-950/75 hover:bg-slate-800 text-slate-200 border border-slate-700/50 rounded-md text-xs transition cursor-pointer">
+              ⏸️ Pause
+            </button>
+          </div>
+        </div>
+
+        <!-- Hand detection status badge -->
+        <div id="hand-indicator" class="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur px-2.5 py-1 rounded-md text-xs text-slate-300 border border-slate-700/60 z-20 flex items-center space-x-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-400" id="hand-dot"></span>
+          <span id="hand-text">No hand detected</span>
+        </div>
+      </div>
+
+      <!-- Real-time Recognition Status Card -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between gap-4 shadow-xs">
+        <div class="flex items-center space-x-4">
+          <!-- Gesture Letter Box -->
+          <div class="w-16 h-16 rounded-xl bg-blue-50 border border-blue-200 flex flex-col items-center justify-center shadow-2xs">
+            <span class="text-[10px] text-blue-600 font-semibold uppercase tracking-wider">Sign</span>
+            <span id="current-sign" class="text-2xl font-bold text-blue-700 leading-none">-</span>
+          </div>
+
+          <div>
+            <div class="flex items-baseline space-x-2">
+              <h3 class="text-sm font-semibold text-slate-800">Current Gesture</h3>
+              <span id="confidence-badge" class="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 font-mono">0.0%</span>
+            </div>
+            <!-- Confidence Bar -->
+            <div class="w-48 sm:w-64 bg-slate-100 h-2 rounded-full mt-2 overflow-hidden border border-slate-200">
+              <div id="confidence-bar" class="bg-blue-600 h-full rounded-full transition-all duration-150" style="width: 0%"></div>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Threshold: <span class="font-mono font-medium text-slate-700">90%</span> required for confirmation</p>
+          </div>
+        </div>
+
+        <div class="text-right hidden sm:block">
+          <span class="text-xs text-slate-400 block font-mono">Confirmed Sign</span>
+          <span id="last-confirmed-sign" class="text-xl font-bold text-slate-800">-</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Sentence Builder & Voice Output -->
+    <div class="lg:col-span-5 flex flex-col space-y-4">
+      
+      <!-- Sentence Box -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5 flex flex-col flex-1 shadow-xs">
+        <div class="flex items-center justify-between mb-2">
+          <label for="sentence-box" class="text-xs font-semibold uppercase tracking-wider text-slate-600">
+            Constructed Sentence
+          </label>
+          <span id="char-count" class="text-xs text-slate-400 font-mono">0 characters</span>
+        </div>
+
+        <div class="relative flex-1 min-h-[160px] flex flex-col">
+          <textarea
+            id="sentence-box"
+            rows="6"
+            placeholder="Recognized signs will accumulate here into words and sentences..."
+            class="w-full flex-1 bg-slate-50 border border-slate-200 rounded-lg p-3 text-base text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition resize-none font-sans"
+          ></textarea>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="grid grid-cols-4 gap-2 mt-4">
+          <button id="btn-speak" class="col-span-4 sm:col-span-2 flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-medium py-2.5 px-4 rounded-lg transition shadow-xs cursor-pointer">
+            <span>🔊</span>
+            <span>Speak Sentence</span>
+          </button>
+          
+          <button id="btn-space" class="bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 font-medium py-2.5 px-3 rounded-lg border border-slate-200 transition text-xs flex items-center justify-center space-x-1 cursor-pointer" title="Add Space [Spacebar]">
+            <span>␣</span>
+            <span>Space</span>
+          </button>
+
+          <button id="btn-backspace" class="bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 font-medium py-2.5 px-3 rounded-lg border border-slate-200 transition text-xs flex items-center justify-center space-x-1 cursor-pointer" title="Backspace [Backspace]">
+            <span>⌫</span>
+            <span>Delete</span>
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
+          <button id="btn-clear" class="text-slate-500 hover:text-rose-600 transition flex items-center space-x-1 cursor-pointer">
+            <span>✕</span>
+            <span>Clear All</span>
+          </button>
+          <button id="btn-copy" class="text-slate-500 hover:text-blue-600 transition flex items-center space-x-1 cursor-pointer">
+            <span>📋</span>
+            <span>Copy Text</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ASL Quick Reference Guide -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
+        <details class="group">
+          <summary class="flex items-center justify-between cursor-pointer list-none text-xs font-semibold uppercase tracking-wider text-slate-600 group-open:text-blue-600 transition">
+            <span>📖 Supported Signs Reference (28 Classes)</span>
+            <span class="text-xs transition group-open:rotate-180 text-slate-400">▼</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-xs">
+            <div id="labels-grid" class="flex flex-wrap gap-1.5">
+              <!-- Loaded dynamically via static/labels.json -->
+              <span class="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 font-mono text-[11px]">Loading classes...</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-2.5">
+              Tip: Hold your hand steady inside the camera box. Special gestures include <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-700 border border-slate-200">space</code> (adds whitespace) and <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-700 border border-slate-200">del</code> (backspaces previous letter).
+            </p>
+          </div>
+        </details>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-200 bg-white py-3 px-6 text-center text-xs text-slate-500">
+    Sign to Voice AI &bull; Shortcuts: <kbd class="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-300 text-slate-700">Space</kbd> Space &bull; <kbd class="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-300 text-slate-700">Backspace</kbd> Delete &bull; <kbd class="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-300 text-slate-700">S</kbd> Speak &bull; <kbd class="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-300 text-slate-700">C</kbd> Clear
+  </footer>
+
+  <!-- Main Application Logic -->
+  <script src="/static/app.js"></script>
+</body>
+</html>

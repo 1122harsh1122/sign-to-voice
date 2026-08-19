@@ -1,0 +1,10 @@
+data/
+*.csv
+.venv/
+.conda/
+mediapipe_py39/
+.vscode/
+__pycache__/
+*.pyc
+.git/
+scripts/

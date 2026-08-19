@@ -1,0 +1,24 @@
+# Virtual Environments
+.venv/
+.conda/
+mediapipe_py39/
+env/
+venv/
+ENV/
+
+# Large Datasets and CSVs
+data/
+*.csv
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.h5
+*.pkl
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
